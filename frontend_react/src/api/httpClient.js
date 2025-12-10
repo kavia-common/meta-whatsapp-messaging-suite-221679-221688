@@ -1,77 +1,91 @@
+import { getEnv, env as envObj, isDev } from '../utils/env';
+
 /**
- * Axios HTTP client configured for the app.
- * - Base URL from env.API_BASE
- * - withCredentials enabled for cookie-based auth
- * - Interceptors:
- *    * Request: attaches default headers
- *    * Response: handles 401s and emits error toasts to console (UI toast integration can hook here)
+ * Lightweight HTTP client using fetch with:
+ * - Base URL from REACT_APP_API_BASE or REACT_APP_BACKEND_URL
+ * - credentials: 'include' for cookie-based auth
+ * - JSON convenience and 401 event emission for login flow
  */
 
-import axios from 'axios';
-import { env, isDev } from '../utils/env';
+// Resolve API base
+const API_BASE = (getEnv?.('REACT_APP_API_BASE') || getEnv?.('REACT_APP_BACKEND_URL') || envObj?.API_BASE || '')
+  .toString()
+  .replace(/\/+$/, '');
 
-// Simple toast gateway: for now logs; UI can subscribe later.
+// Simple pub/sub for auth events so UI can react if needed
+const listeners = new Set();
+
 // PUBLIC_INTERFACE
-export function notifyErrorToast(message, details) {
-  /** Hook to show toast errors. Replace implementation to integrate with UI toasts. */
-  // eslint-disable-next-line no-console
-  console.error('[Toast][error]', message, details ?? '');
+export function onAuthEvent(callback) {
+  /** Subscribe to auth-related events like 'unauthorized'.
+   * Returns an unsubscribe function.
+   */
+  listeners.add(callback);
+  return () => listeners.delete(callback);
 }
 
-// Create the axios instance
-const httpClient = axios.create({
-  baseURL: env.API_BASE,
-  withCredentials: true,
-  headers: {
-    'Content-Type': 'application/json',
-  },
-});
+function emit(event, payload) {
+  listeners.forEach((cb) => {
+    try {
+      cb(event, payload);
+    } catch (_e) {
+      // noop
+    }
+  });
+}
 
-// Request interceptor to add default headers (like X-Requested-With)
-httpClient.interceptors.request.use(
-  (config) => {
-    const cfg = { ...config };
-    cfg.headers = {
-      ...cfg.headers,
-      'X-Requested-With': 'XMLHttpRequest',
-    };
-    return cfg;
-  },
-  (error) => {
-    if (isDev()) {
+async function request(path, options = {}) {
+  const url = `${API_BASE}${path}`;
+  const response = await fetch(url, {
+    credentials: 'include',
+    headers: {
+      'Content-Type': 'application/json',
+      ...(options.headers || {}),
+    },
+    ...options,
+  });
+
+  if (!response.ok) {
+    if (response.status === 401) {
+      emit('unauthorized', { path, options });
+    }
+    const contentType = response.headers.get('content-type') || '';
+    let errorPayload;
+    try {
+      errorPayload = contentType.includes('application/json') ? await response.json() : await response.text();
+    } catch (_e) {
+      errorPayload = `HTTP error ${response.status}`;
+    }
+    if (isDev?.()) {
       // eslint-disable-next-line no-console
-      console.warn('[http][request-error]', error);
+      console.warn('[http][error]', response.status, errorPayload);
     }
-    return Promise.reject(error);
+    const err = new Error(
+      typeof errorPayload === 'string' ? errorPayload : errorPayload?.message || `HTTP error ${response.status}`
+    );
+    err.status = response.status;
+    err.payload = errorPayload;
+    throw err;
   }
-);
 
-// Response interceptor to catch errors and 401 unauthorized
-httpClient.interceptors.response.use(
-  (response) => response,
-  (error) => {
-    const status = error?.response?.status;
-    const message =
-      error?.response?.data?.message ||
-      error?.message ||
-      'An unexpected error occurred';
-
-    if (status === 401) {
-      // Not authenticated; downstream can redirect to login if applicable.
-      notifyErrorToast('Your session has expired. Please sign in again.');
-      // Optionally, we could emit an event or set a global store flag.
-    } else {
-      notifyErrorToast(message);
-    }
-
-    if (isDev()) {
-      // eslint-disable-next-line no-console
-      console.warn('[http][response-error]', { status, error });
-    }
-
-    return Promise.reject(error);
+  const contentType = response.headers.get('content-type') || '';
+  if (contentType.includes('application/json')) {
+    return response.json();
   }
-);
+  return response.text();
+}
 
-// PUBLIC_INTERFACE
+const httpClient = {
+  // PUBLIC_INTERFACE
+  get: (path, options = {}) => request(path, { method: 'GET', ...options }),
+  // PUBLIC_INTERFACE
+  post: (path, body, options = {}) =>
+    request(path, { method: 'POST', body: body != null ? JSON.stringify(body) : undefined, ...options }),
+  // PUBLIC_INTERFACE
+  put: (path, body, options = {}) =>
+    request(path, { method: 'PUT', body: body != null ? JSON.stringify(body) : undefined, ...options }),
+  // PUBLIC_INTERFACE
+  delete: (path, options = {}) => request(path, { method: 'DELETE', ...options }),
+};
+
 export default httpClient;
