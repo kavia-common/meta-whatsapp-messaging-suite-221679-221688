@@ -21,9 +21,21 @@ export default function Sidebar() {
           <NavLink to="/dashboard" className={({ isActive }) => (isActive ? 'active' : undefined)}>
             Dashboard
           </NavLink>
-          <button type="button" title="Message Templates (coming soon)" aria-disabled="true">Templates</button>
-          <button type="button" title="Contacts (coming soon)" aria-disabled="true">Contacts</button>
-          <button type="button" title="Approvals (coming soon)" aria-disabled="true">Approvals</button>
+          <NavLink to="/templates" className={({ isActive }) => (isActive ? 'active' : undefined)}>
+            Templates
+          </NavLink>
+          <NavLink to="/contacts" className={({ isActive }) => (isActive ? 'active' : undefined)}>
+            Contacts
+          </NavLink>
+          <NavLink to="/messaging" className={({ isActive }) => (isActive ? 'active' : undefined)}>
+            Messaging
+          </NavLink>
+          <NavLink to="/approvals" className={({ isActive }) => (isActive ? 'active' : undefined)}>
+            Approvals
+          </NavLink>
+          <NavLink to="/settings" className={({ isActive }) => (isActive ? 'active' : undefined)}>
+            Settings
+          </NavLink>
         </nav>
       </div>
     </aside>
