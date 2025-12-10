@@ -48,6 +48,18 @@ export async function submitTemplate(id) {
   return res?.data?.data ?? res?.data ?? { ok: true, id, status: 'submitted' };
 }
 
+// PUBLIC_INTERFACE
+export async function submitTemplateForApproval(id, payload = {}) {
+  /** Submit an existing template for approval with optional category.
+   * Params:
+   *  - id: string
+   *  - payload: { category?: string }
+   */
+  if (!id) throw new Error('Template id is required');
+  const res = await httpClient.post(`/templates/${encodeURIComponent(id)}/submit`, payload);
+  return res.data;
+}
+
 export default {
   listTemplates,
   getTemplate,
@@ -55,4 +67,5 @@ export default {
   updateTemplate,
   deleteTemplate,
   submitTemplate,
+  submitTemplateForApproval,
 };
