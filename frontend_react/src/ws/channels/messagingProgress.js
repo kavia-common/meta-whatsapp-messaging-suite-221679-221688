@@ -1,0 +1,108 @@
+/**
+ * Messaging progress channel
+ * Provides subscribe/unsubscribe helpers to receive progress updates for a campaignId.
+ * Requires REACT_APP_WS_URL to be set to enable WebSocket usage.
+ */
+
+import { getWSClient } from "../wsClient";
+import { getEnv } from "../../utils/env";
+
+// Map campaignId -> Set(callback)
+const subscribers = new Map();
+// Track initialized WS per campaign
+let wsClient = null;
+
+// Build subscription message shapes for server interop
+function makeSubscribeMsg(campaignId) {
+  return { type: "subscribe_progress", channel: "messaging_progress", campaignId };
+}
+function makeUnsubscribeMsg(campaignId) {
+  return { type: "unsubscribe_progress", channel: "messaging_progress", campaignId };
+}
+
+/**
+ * PUBLIC_INTERFACE
+ * Subscribe to progress updates for a campaignId.
+ * The callback receives the full message payload as provided by server.
+ * Returns an unsubscribe function.
+ */
+export function subscribe(campaignId, cb) {
+  /** This is a public function to listen for campaign progress over WebSocket. */
+  if (!campaignId) throw new Error("campaignId is required");
+  if (typeof cb !== "function") throw new Error("callback must be a function");
+
+  const { REACT_APP_WS_URL } = getEnv();
+  if (!REACT_APP_WS_URL) {
+    // No WS URL configured; caller should fallback to polling.
+    // Return noop unsubscribe.
+    return () => {};
+  }
+
+  if (!wsClient) {
+    wsClient = getWSClient(REACT_APP_WS_URL);
+    // Global listener for messaging_progress events
+    wsClient.on("messaging_progress", (msg) => {
+      const id = msg?.campaignId || msg?.campaign_id || msg?.data?.campaignId;
+      if (!id) return;
+      const set = subscribers.get(String(id));
+      if (set && set.size) {
+        set.forEach((fn) => {
+          try {
+            fn(msg);
+          } catch (e) {
+            // eslint-disable-next-line no-console
+            console.error("messagingProgress subscriber error", e);
+          }
+        });
+      }
+    });
+  }
+
+  const key = String(campaignId);
+  if (!subscribers.has(key)) subscribers.set(key, new Set());
+  subscribers.get(key).add(cb);
+
+  // Attempt to send subscribe command (best-effort)
+  try {
+    wsClient.send(makeSubscribeMsg(key));
+  } catch (e) {
+    // eslint-disable-next-line no-console
+    console.warn("Failed to send subscribe message", e);
+  }
+
+  // Return unsubscribe
+  return () => {
+    const set = subscribers.get(key);
+    if (set) {
+      set.delete(cb);
+      if (set.size === 0) {
+        subscribers.delete(key);
+        // Tell server we no longer need this stream
+        try {
+          wsClient && wsClient.send(makeUnsubscribeMsg(key));
+        } catch (e) {
+          // ignore
+        }
+      }
+    }
+  };
+}
+
+/**
+ * PUBLIC_INTERFACE
+ * Explicit unsubscribe helper for a campaign
+ */
+export function unsubscribe(campaignId) {
+  /** This is a public function to stop listening for campaign progress. */
+  if (!campaignId) return;
+  const key = String(campaignId);
+  const set = subscribers.get(key);
+  if (set) {
+    subscribers.delete(key);
+    try {
+      if (wsClient) wsClient.send(makeUnsubscribeMsg(key));
+    } catch (e) {
+      // ignore
+    }
+  }
+}
