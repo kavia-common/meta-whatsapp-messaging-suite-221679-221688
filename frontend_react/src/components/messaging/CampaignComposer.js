@@ -9,6 +9,7 @@ import TemplatePreview from '../templates/TemplatePreview';
 import { useStore } from '../../state/store';
 import { fetchTemplates } from '../../state/slices/templatesSlice';
 import { listContactLists } from '../../api/contactsApi';
+import { TemplateStatus } from '../../utils/constants';
 
 /**
  * CampaignComposer
@@ -52,9 +53,12 @@ export default function CampaignComposer({ onStart }) {
   };
   useEffect(() => { refreshContacts(); }, []);
 
-  // Only approved templates should be selectable
+  // Only approved/submitted templates should be selectable
   const approvedTemplates = useMemo(
-    () => (templates || []).filter((t) => t.status === 'approved' || t.status === 'submitted' || t.status === 'APPROVED'),
+    () => (templates || []).filter((t) => {
+      const s = String(t.status || '').toUpperCase();
+      return [TemplateStatus.APPROVED, TemplateStatus.PENDING, 'SUBMITTED'].includes(s);
+    }),
     [templates]
   );
 

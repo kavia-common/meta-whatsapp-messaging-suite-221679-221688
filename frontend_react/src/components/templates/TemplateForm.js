@@ -7,6 +7,8 @@ import Select from '../common/Select';
 import Button from '../common/Button';
 import VariableEditor from './VariableEditor';
 import TemplatePreview from './TemplatePreview';
+import { getLanguageOptions, getMetaCategoryOptions } from '../../utils/metaWhatsApp';
+import { validateTemplateForm } from '../../utils/validators';
 
 /**
  * TemplateForm
@@ -22,7 +24,7 @@ export default function TemplateForm({ initialValue, onCancel, onSubmit, submitt
   const [footer, setFooter] = useState(initialValue?.footer || '');
   const [buttons, setButtons] = useState(initialValue?.buttons || []);
   const [variables, setVariables] = useState(initialValue?.variables || {});
-  const [error, setError] = useState(null);
+  const [errors, setErrors] = useState({});
 
   const isEdit = !!initialValue?.id;
 
@@ -30,9 +32,11 @@ export default function TemplateForm({ initialValue, onCancel, onSubmit, submitt
     name: name.trim(),
     language,
     category,
-    body,
-    footer,
-    buttons,
+    components: {
+      body,
+      footer,
+      buttons,
+    },
     variables,
   }), [name, language, category, body, footer, buttons, variables]);
 
@@ -74,54 +78,86 @@ export default function TemplateForm({ initialValue, onCancel, onSubmit, submitt
     setVariables(next);
   };
 
-  const validate = () => {
-    if (!templatePayload.name) return 'Name is required';
-    if (!templatePayload.body) return 'Message body is required';
-    return null;
-    // We could add more validation (length limits, button counts, etc.)
-  };
-
   const submit = (e) => {
     e?.preventDefault?.();
-    const err = validate();
-    if (err) return setError(err);
-    setError(null);
-    onSubmit?.(templatePayload);
+    const { valid, errors: formErrors } = validateTemplateForm({
+      name,
+      category,
+      language,
+      components: { body, footer, buttons },
+    });
+    if (!valid) {
+      setErrors(formErrors || {});
+      return;
+    }
+    setErrors({});
+    // Normalize structure used by backend
+    const payload = {
+      name: name.trim(),
+      category,
+      language,
+      body,
+      footer,
+      buttons,
+      variables,
+    };
+    onSubmit?.(payload);
   };
+
+  const langOptions = useMemo(() => getLanguageOptions(), []);
+  const catOptions = useMemo(() => getMetaCategoryOptions(), []);
 
   return (
     <form onSubmit={submit}>
       <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr', gap: 16 }}>
         <div>
           <Card title={isEdit ? 'Edit Template' : 'New Template'} subtitle="Details">
-            <Input id="tpl-name" label="Name" value={name} onChange={(e) => setName(e.target.value)} required placeholder="e.g. promo_summer_2025" />
+            <Input
+              id="tpl-name"
+              label="Name"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              required
+              placeholder="e.g. promo_summer_2025"
+              error={errors.name}
+            />
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
               <Select
                 id="tpl-lang"
                 label="Language"
                 value={language}
                 onChange={(e) => setLanguage(e.target.value)}
-                options={[
-                  { value: 'en_US', label: 'English (US)' },
-                  { value: 'en_GB', label: 'English (UK)' },
-                  { value: 'es_ES', label: 'Spanish' },
-                  { value: 'pt_BR', label: 'Portuguese (BR)' },
-                ]}
+                options={langOptions}
+                error={errors.language}
               />
               <Select
                 id="tpl-category"
                 label="Category"
                 value={category}
                 onChange={(e) => setCategory(e.target.value)}
-                options={[
-                  { value: 'MARKETING', label: 'Marketing' },
-                  { value: 'UTILITY', label: 'Utility' },
-                  { value: 'AUTHENTICATION', label: 'Authentication' },
-                ]}
+                options={catOptions}
+                error={errors.category}
               />
             </div>
-            <TextArea id="tpl-body" label="Message body" value={body} onChange={(e) => setBody(e.target.value)} rows={8} placeholder="Write message body. Use {{variable}} placeholders." required />
-            <TextArea id="tpl-footer" label="Footer (optional)" value={footer} onChange={(e) => setFooter(e.target.value)} rows={3} placeholder="Add footer if needed" />
+            <TextArea
+              id="tpl-body"
+              label="Message body"
+              value={body}
+              onChange={(e) => setBody(e.target.value)}
+              rows={8}
+              placeholder="Write message body. Use {{variable}} placeholders."
+              required
+              error={errors.body}
+            />
+            <TextArea
+              id="tpl-footer"
+              label="Footer (optional)"
+              value={footer}
+              onChange={(e) => setFooter(e.target.value)}
+              rows={3}
+              placeholder="Add footer if needed"
+              error={errors.footer}
+            />
 
             <div style={{ marginTop: 6 }}>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
@@ -165,8 +201,6 @@ export default function TemplateForm({ initialValue, onCancel, onSubmit, submitt
             <div style={{ marginTop: 12 }}>
               <VariableEditor variables={variables} onChange={setVariables} onDetectFromText={detectVariables} />
             </div>
-
-            {error ? <div className="form-error" role="alert" style={{ marginTop: 12 }}>{error}</div> : null}
 
             <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
               <Button type="submit" variant="primary" disabled={submitting}>

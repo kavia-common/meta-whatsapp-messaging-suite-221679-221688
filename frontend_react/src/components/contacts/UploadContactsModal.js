@@ -6,6 +6,8 @@ import Select from '../common/Select';
 import Button from '../common/Button';
 import Table from '../common/Table';
 import { parseCsv } from '../../utils/csvParser';
+import { validateCSVHeaders } from '../../utils/validators';
+import { CSVHeaders } from '../../utils/constants';
 
 /**
  * UploadContactsModal
@@ -25,14 +27,17 @@ export default function UploadContactsModal({ open, onClose, onUpload }) {
     return parseCsv(textPreview, { delimiter, header: hasHeader, limitRows: 50 });
   }, [textPreview, delimiter, hasHeader]);
 
+  const headerValidation = useMemo(() => {
+    if (!hasHeader || !parsed.headers?.length) return { valid: true, missing: [], extras: [] };
+    return validateCSVHeaders(parsed.headers, CSVHeaders.CONTACTS);
+  }, [parsed.headers, hasHeader]);
+
   const columns = useMemo(() => {
     const heads = parsed.headers && parsed.headers.length > 0
       ? parsed.headers
       : (parsed.rows[0]?.map((_, idx) => `col_${idx + 1}`) || []);
     return heads.map((h, idx) => ({ key: (r) => r[idx], header: h }));
   }, [parsed]);
-
-  const data = parsed.rows.map((r, idx) => ({ id: idx + 1, ...r }));
 
   const handleFileChange = async (e) => {
     const f = e.target.files?.[0];
@@ -56,6 +61,10 @@ export default function UploadContactsModal({ open, onClose, onUpload }) {
     }
     if (!listName.trim()) {
       setError('Please enter a list name.');
+      return;
+    }
+    if (hasHeader && !headerValidation.valid) {
+      setError(`CSV is missing required headers: ${headerValidation.missing.join(', ')}`);
       return;
     }
     setError(null);
@@ -114,6 +123,16 @@ export default function UploadContactsModal({ open, onClose, onUpload }) {
         </div>
 
         {error ? <div className="form-error" role="alert">{error}</div> : null}
+
+        {hasHeader && parsed.headers?.length ? (
+          <div className="toast" role="status" style={{ marginTop: 4 }}>
+            <div className={`toast__content ${headerValidation.valid ? '' : 'text-error'}`}>
+              {headerValidation.valid
+                ? `Detected headers: ${parsed.headers.join(', ')}`
+                : `Missing headers: ${headerValidation.missing.join(', ')}. Extras: ${headerValidation.extras.join(', ')}`}
+            </div>
+          </div>
+        ) : null}
 
         <div>
           <div style={{ fontWeight: 600, marginBottom: 6 }}>Preview</div>
