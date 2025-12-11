@@ -1,11 +1,19 @@
 //
 // Environment utilities for the React app.
 // Safely reads REACT_APP_* variables, provides defaults, and parses booleans/JSON.
-//
 // Usage:
-//   import { env } from '../utils/env';
+//   import { env, getEnv, parseBool, parseJson } from '../utils/env';
 //   const apiUrl = env.API_BASE;
 //
+// Notes:
+// - Do not read .env directly; values are injected at build-time into process.env.
+// - All public functions are marked with PUBLIC_INTERFACE as required.
+//
+
+/**
+ * INTERNAL: Fetch and normalize an env var value.
+ * Treats undefined/null/empty-string as undefined to allow defaulting.
+ */
 // PUBLIC_INTERFACE
 export function getEnvVar(name, defaultValue = undefined) {
   /**
@@ -23,7 +31,7 @@ export function parseBool(val, defaultValue = false) {
   /**
    * Parses a boolean-like value from string/boolean/number safely.
    * Accepted truthy: '1', 'true', 'yes', 'on', 1, true
-   * Accepted falsy: '0', 'false', 'no', 'off', 0, false
+   * Accepted falsy: '0', 'false', 'no', 'off', 0, false, ''
    */
   if (typeof val === 'boolean') return val;
   if (typeof val === 'number') return val !== 0;
@@ -53,7 +61,7 @@ export function parseJson(val, defaultValue = {}) {
   }
 }
 
-// Build the environment map with sensible defaults for local dev.
+// Compute normalized values with sensible defaults
 const NODE_ENV = getEnvVar('REACT_APP_NODE_ENV', process.env.NODE_ENV || 'development');
 
 // Prefer REACT_APP_API_BASE, fallback to BACKEND_URL, else relative '/api' for proxy setups.
@@ -72,7 +80,11 @@ const ENABLE_SOURCE_MAPS = parseBool(getEnvVar('REACT_APP_ENABLE_SOURCE_MAPS', N
 // Misc
 const PORT = Number(getEnvVar('REACT_APP_PORT', '3000'));
 const TRUST_PROXY = parseBool(getEnvVar('REACT_APP_TRUST_PROXY', '0'), false);
-const LOG_LEVEL = getEnvVar('REACT_APP_LOG_LEVEL', NODE_ENV === 'production' ? 'warn' : 'debug');
+
+// Log level: debug (dev), info (test), warn (prod) defaulting based on NODE_ENV
+const DEFAULT_LOG_LEVEL = NODE_ENV === 'production' ? 'warn' : (NODE_ENV === 'test' ? 'info' : 'debug');
+const LOG_LEVEL = String(getEnvVar('REACT_APP_LOG_LEVEL', DEFAULT_LOG_LEVEL)).toLowerCase();
+
 const HEALTHCHECK_PATH = getEnvVar('REACT_APP_HEALTHCHECK_PATH', '/healthz');
 
 // Feature flags and experiments
@@ -84,6 +96,7 @@ const EXPERIMENTS_ENABLED = parseBool(getEnvVar('REACT_APP_EXPERIMENTS_ENABLED',
  * PUBLIC_INTERFACE
  * Return a snapshot of current environment variables in a simple object.
  */
+// PUBLIC_INTERFACE
 export function getEnv() {
   return {
     REACT_APP_NODE_ENV: env.NODE_ENV,
