@@ -1,12 +1,12 @@
 import { createAsyncThunk, createSlice } from '@reduxjs/toolkit';
-import { templatesApi } from '../../api/templatesApi';
+import templatesApi from '../../api/templatesApi';
 import { showToast } from './uiSlice';
 
 // PUBLIC_INTERFACE
 export const fetchTemplates = createAsyncThunk('templates/fetchTemplates', async (_, { rejectWithValue }) => {
   try {
-    const res = await templatesApi.getTemplates();
-    return res || [];
+    const res = await templatesApi.listTemplates();
+    return Array.isArray(res) ? res : (res?.items || []);
   } catch (err) {
     return rejectWithValue(err?.message || 'Failed to fetch templates');
   }

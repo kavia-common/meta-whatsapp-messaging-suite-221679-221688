@@ -39,7 +39,7 @@ export function getLoginUrl(redirectTo) {
   return url.toString();
 }
 
-// PUBLIC_INTERFACE
+ // PUBLIC_INTERFACE
 export async function logout(redirectTo) {
   /** Perform logout on the backend and redirect to landing or provided URL. */
   try {
@@ -47,7 +47,7 @@ export async function logout(redirectTo) {
   } catch (_e) {
     // ignore network errors on logout
   }
-  const dest = redirectTo || getFrontendUrl();
+  const dest = redirectTo || getFrontendUrl() || '/';
   if (typeof window !== 'undefined') {
     window.location.assign(dest);
   }

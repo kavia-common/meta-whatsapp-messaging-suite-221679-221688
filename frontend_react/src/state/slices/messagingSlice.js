@@ -1,11 +1,11 @@
 import { createAsyncThunk, createSlice } from '@reduxjs/toolkit';
-import { messagingApi } from '../../api/messagingApi';
+import messagingApi from '../../api/messagingApi';
 import { showToast } from './uiSlice';
 
 // PUBLIC_INTERFACE
 export const sendCampaign = createAsyncThunk('messaging/sendCampaign', async (payload, { rejectWithValue, dispatch }) => {
   try {
-    const res = await messagingApi.sendCampaign(payload);
+    const res = await messagingApi.createCampaign(payload);
     dispatch(showToast({ type: 'success', message: 'Campaign started' }));
     return res;
   } catch (err) {
@@ -18,7 +18,7 @@ export const sendCampaign = createAsyncThunk('messaging/sendCampaign', async (pa
 // PUBLIC_INTERFACE
 export const fetchDeliveryReport = createAsyncThunk('messaging/fetchDeliveryReport', async (campaignId, { rejectWithValue }) => {
   try {
-    const res = await messagingApi.getDeliveryReport(campaignId);
+    const res = await messagingApi.getCampaignReport(campaignId);
     return res;
   } catch (err) {
     return rejectWithValue(err?.message || 'Failed to fetch delivery report');

@@ -1,12 +1,12 @@
 import { createAsyncThunk, createSlice } from '@reduxjs/toolkit';
-import { contactsApi } from '../../api/contactsApi';
+import contactsApi from '../../api/contactsApi';
 import { showToast } from './uiSlice';
 
 // PUBLIC_INTERFACE
 export const fetchContactLists = createAsyncThunk('contacts/fetchContactLists', async (_, { rejectWithValue }) => {
   try {
-    const res = await contactsApi.getContactLists();
-    return res || [];
+    const res = await contactsApi.listContactLists();
+    return Array.isArray(res) ? res : (res?.items || []);
   } catch (err) {
     return rejectWithValue(err?.message || 'Failed to fetch contact lists');
   }
@@ -26,11 +26,11 @@ export const createContactList = createAsyncThunk('contacts/createContactList', 
 });
 
 // PUBLIC_INTERFACE
-export const uploadContacts = createAsyncThunk('contacts/uploadContacts', async ({ listId, contacts }, { rejectWithValue, dispatch }) => {
+export const uploadContacts = createAsyncThunk('contacts/uploadContacts', async ({ file, listName, delimiter, hasHeader }, { rejectWithValue, dispatch }) => {
   try {
-    const res = await contactsApi.uploadContacts(listId, contacts);
+    const res = await contactsApi.uploadContactsCsv({ file, listName, delimiter, hasHeader });
     dispatch(showToast({ type: 'success', message: `Uploaded ${res?.added || 0} contacts` }));
-    return { listId, res };
+    return { listName, res };
   } catch (err) {
     const msg = err?.message || 'Failed to upload contacts';
     dispatch(showToast({ type: 'error', message: msg }));
