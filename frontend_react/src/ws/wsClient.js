@@ -1,6 +1,10 @@
-//
-// WebSocket client with auto-reconnect, heartbeat, and event dispatch
-//
+/**
+ * WebSocket client with auto-reconnect, heartbeat, and event dispatch.
+ * This hardened client integrates with REACT_APP_WS_URL and exposes helpers to create
+ * a singleton client from environment. Includes robust error handling and teardown.
+ */
+
+import { getEnv, isProd } from "../utils/env";
 
 /**
  * Lightweight event emitter to avoid external deps.
@@ -38,17 +42,18 @@ class Emitter {
 
 /**
  * Options for the WebSocket client
- * - url: ws(s):// endpoint
  * - protocols: optional subprotocols
  * - heartbeatInterval: ms between pings
  * - heartbeatTimeout: ms to wait for pong before reconnect
  * - maxReconnectDelay: maximum backoff ms
+ * - logErrors: log to console errors in non-prod
  */
 const DEFAULTS = {
   protocols: undefined,
   heartbeatInterval: 15000,
   heartbeatTimeout: 10000,
   maxReconnectDelay: 30000,
+  logErrors: true,
 };
 
 /**
@@ -61,6 +66,9 @@ export class WSClient {
    *  @param {Partial<typeof DEFAULTS>} options */
   constructor(url, options = {}) {
     /** This is a public class that manages a resilient WebSocket connection. */
+    if (!/^wss?:\/\//i.test(String(url || ""))) {
+      throw new Error("Invalid WebSocket URL. Expected ws:// or wss://");
+    }
     this.url = url;
     this.opts = { ...DEFAULTS, ...options };
     this.ws = null;
@@ -96,13 +104,30 @@ export class WSClient {
   /**
    * PUBLIC_INTERFACE
    * Send a message (object) through the socket. Adds "client_ts" by default.
+   * Returns false when socket is not open.
    */
   send(obj) {
     const payload = { client_ts: Date.now(), ...obj };
-    const raw = JSON.stringify(payload);
+    let raw;
+    try {
+      raw = JSON.stringify(payload);
+    } catch (e) {
+      if (this.opts.logErrors && !isProd()) {
+        // eslint-disable-next-line no-console
+        console.warn("WSClient: failed to stringify payload", e);
+      }
+      return false;
+    }
     if (this.ws && this.ws.readyState === WebSocket.OPEN) {
-      this.ws.send(raw);
-      return true;
+      try {
+        this.ws.send(raw);
+        return true;
+      } catch (e) {
+        if (this.opts.logErrors && !isProd()) {
+          // eslint-disable-next-line no-console
+          console.warn("WSClient: send failed", e);
+        }
+      }
     }
     return false;
   }
@@ -116,6 +141,10 @@ export class WSClient {
     this._clearHeartbeat();
     if (this.ws) {
       try {
+        this.ws.onopen = null;
+        this.ws.onmessage = null;
+        this.ws.onerror = null;
+        this.ws.onclose = null;
         this.ws.close(1000, "client closing");
       } catch (e) {
         // ignore
@@ -130,6 +159,10 @@ export class WSClient {
     } catch (e) {
       this._scheduleReconnect();
       this.statusEmitter.emit("error", e);
+      if (this.opts.logErrors && !isProd()) {
+        // eslint-disable-next-line no-console
+        console.error("WSClient: construct WebSocket failed", e);
+      }
       return;
     }
 
@@ -146,6 +179,10 @@ export class WSClient {
 
     this.ws.onerror = (err) => {
       this.statusEmitter.emit("error", err);
+      if (this.opts.logErrors && !isProd()) {
+        // eslint-disable-next-line no-console
+        console.error("WSClient: socket error", err);
+      }
       // Some browsers emit onerror then onclose; reconnect in onclose.
     };
 
@@ -217,8 +254,10 @@ export class WSClient {
     try {
       data = typeof event.data === "string" ? JSON.parse(event.data) : event.data;
     } catch (e) {
-      // eslint-disable-next-line no-console
-      console.warn("WS message parse error", e, event.data);
+      if (this.opts.logErrors && !isProd()) {
+        // eslint-disable-next-line no-console
+        console.warn("WSClient: message parse error", e, event?.data);
+      }
       return;
     }
 
@@ -254,4 +293,23 @@ export function getWSClient(url, options) {
     clientsByUrl.set(key, new WSClient(url, options));
   }
   return clientsByUrl.get(key);
+}
+
+/**
+ * PUBLIC_INTERFACE
+ * Get or create a singleton WSClient using REACT_APP_WS_URL.
+ * Returns null when REACT_APP_WS_URL is not configured.
+ */
+export function getWSClientFromEnv(options) {
+  const { REACT_APP_WS_URL } = getEnv();
+  if (!REACT_APP_WS_URL) return null;
+  try {
+    return getWSClient(REACT_APP_WS_URL, options);
+  } catch (e) {
+    if (!isProd()) {
+      // eslint-disable-next-line no-console
+      console.warn("WSClientFromEnv: invalid REACT_APP_WS_URL", e);
+    }
+    return null;
+  }
 }
