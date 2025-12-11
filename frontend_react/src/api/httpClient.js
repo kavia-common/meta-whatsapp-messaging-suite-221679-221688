@@ -123,13 +123,51 @@ async function request(path, options = {}) {
 
 const httpClient = {
   // PUBLIC_INTERFACE
-  get: (path, options = {}) => request(path, { method: 'GET', ...options }),
+  get: (path, options = {}) => {
+    // Support options.params for query string
+    const { params, ...rest } = options || {};
+    let finalPath = path;
+    if (params && typeof params === 'object') {
+      const usp = new URLSearchParams();
+      Object.entries(params).forEach(([k, v]) => {
+        if (v === undefined || v === null || v === '') return;
+        usp.append(k, String(v));
+      });
+      const qs = usp.toString();
+      if (qs) {
+        finalPath = `${String(path)}${String(path).includes('?') ? '&' : '?'}${qs}`;
+      }
+    }
+    return request(finalPath, { method: 'GET', ...rest });
+  },
   // PUBLIC_INTERFACE
-  post: (path, body, options = {}) =>
-    request(path, { method: 'POST', body: body != null ? JSON.stringify(body) : undefined, ...options }),
+  post: (path, body, options = {}) => {
+    const headers = { ...(options.headers || {}) };
+    let finalBody = body;
+    // If body is FormData or Blob, don't JSON.stringify and let browser set content-type (unless provided)
+    const isForm = typeof FormData !== 'undefined' && body instanceof FormData;
+    if (!isForm && body != null && typeof body !== 'string' && !(body instanceof Blob)) {
+      finalBody = JSON.stringify(body);
+    } else if (isForm) {
+      // Remove content-type so browser can add correct boundary
+      delete headers['Content-Type'];
+      delete headers['content-type'];
+    }
+    return request(path, { method: 'POST', body: finalBody, headers, ...options });
+  },
   // PUBLIC_INTERFACE
-  put: (path, body, options = {}) =>
-    request(path, { method: 'PUT', body: body != null ? JSON.stringify(body) : undefined, ...options }),
+  put: (path, body, options = {}) => {
+    const headers = { ...(options.headers || {}) };
+    let finalBody = body;
+    const isForm = typeof FormData !== 'undefined' && body instanceof FormData;
+    if (!isForm && body != null && typeof body !== 'string' && !(body instanceof Blob)) {
+      finalBody = JSON.stringify(body);
+    } else if (isForm) {
+      delete headers['Content-Type'];
+      delete headers['content-type'];
+    }
+    return request(path, { method: 'PUT', body: finalBody, headers, ...options });
+  },
   // PUBLIC_INTERFACE
   delete: (path, options = {}) => request(path, { method: 'DELETE', ...options }),
 };
