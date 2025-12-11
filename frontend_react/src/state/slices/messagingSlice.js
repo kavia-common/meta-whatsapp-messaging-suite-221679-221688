@@ -1,59 +1,77 @@
-import httpClient from '../../api/httpClient';
-
-const prefix = 'messaging';
-
-const SET_SENDING = `${prefix}/SET_SENDING`;
-const SET_ERROR = `${prefix}/SET_ERROR`;
-const ADD_TO_QUEUE = `${prefix}/ADD_TO_QUEUE`;
-const ADD_HISTORY = `${prefix}/ADD_HISTORY`;
-
-const initialState = {
-  queue: [],
-  history: [],
-  sending: false,
-  error: null,
-};
-
-function reducer(state = initialState, action) {
-  switch (action.type) {
-    case SET_SENDING:
-      return { ...state, sending: action.payload, error: action.payload === true ? null : state.error };
-    case SET_ERROR:
-      return { ...state, error: action.payload, sending: false };
-    case ADD_TO_QUEUE:
-      return { ...state, queue: [...state.queue, action.payload] };
-    case ADD_HISTORY:
-      return { ...state, history: [action.payload, ...state.history] };
-    default:
-      return state;
-  }
-}
+import { createAsyncThunk, createSlice } from '@reduxjs/toolkit';
+import { messagingApi } from '../../api/messagingApi';
+import { showToast } from './uiSlice';
 
 // PUBLIC_INTERFACE
-export function sendBulkMessage({ templateId, contactIds, variables }) {
-  /**
-   * Async thunk to send a bulk message.
-   * Placeholder endpoint: POST /messages/send
-   * Body: { templateId, contactIds, variables }
-   */
-  return async (dispatch) => {
-    const payload = { templateId, contactIds, variables };
-    dispatch({ type: ADD_TO_QUEUE, payload });
-    dispatch({ type: SET_SENDING, payload: true });
-    try {
-      const res = await httpClient.post('/messages/send', payload);
-      dispatch({ type: ADD_HISTORY, payload: res?.data || { ok: true, ...payload, ts: Date.now() } });
-    } catch (e) {
-      dispatch({ type: SET_ERROR, payload: e?.message || 'Failed to send messages' });
-    } finally {
-      dispatch({ type: SET_SENDING, payload: false });
-    }
-  };
-}
+export const sendCampaign = createAsyncThunk('messaging/sendCampaign', async (payload, { rejectWithValue, dispatch }) => {
+  try {
+    const res = await messagingApi.sendCampaign(payload);
+    dispatch(showToast({ type: 'success', message: 'Campaign started' }));
+    return res;
+  } catch (err) {
+    const msg = err?.message || 'Failed to start campaign';
+    dispatch(showToast({ type: 'error', message: msg }));
+    return rejectWithValue(msg);
+  }
+});
 
-export default {
-  initialState,
-  reducer,
-  actions: { sendBulkMessage },
-  types: { SET_SENDING, SET_ERROR, ADD_TO_QUEUE, ADD_HISTORY },
-};
+// PUBLIC_INTERFACE
+export const fetchDeliveryReport = createAsyncThunk('messaging/fetchDeliveryReport', async (campaignId, { rejectWithValue }) => {
+  try {
+    const res = await messagingApi.getDeliveryReport(campaignId);
+    return res;
+  } catch (err) {
+    return rejectWithValue(err?.message || 'Failed to fetch delivery report');
+  }
+});
+
+const messagingSlice = createSlice({
+  name: 'messaging',
+  initialState: {
+    lastCampaign: null,
+    report: null,
+    loading: { send: false, report: false },
+    error: { send: null, report: null },
+  },
+  reducers: {
+    // PUBLIC_INTERFACE
+    resetReport(state) {
+      /** Reset current delivery report state. */
+      state.report = null;
+      state.loading.report = false;
+      state.error.report = null;
+    },
+  },
+  extraReducers: (builder) => {
+    builder
+      // send
+      .addCase(sendCampaign.pending, (state) => {
+        state.loading.send = true;
+        state.error.send = null;
+      })
+      .addCase(sendCampaign.fulfilled, (state, action) => {
+        state.loading.send = false;
+        state.lastCampaign = action.payload || null;
+      })
+      .addCase(sendCampaign.rejected, (state, action) => {
+        state.loading.send = false;
+        state.error.send = action.payload || 'Failed to start campaign';
+      })
+      // report
+      .addCase(fetchDeliveryReport.pending, (state) => {
+        state.loading.report = true;
+        state.error.report = null;
+      })
+      .addCase(fetchDeliveryReport.fulfilled, (state, action) => {
+        state.loading.report = false;
+        state.report = action.payload || null;
+      })
+      .addCase(fetchDeliveryReport.rejected, (state, action) => {
+        state.loading.report = false;
+        state.error.report = action.payload || 'Failed to fetch delivery report';
+      });
+  },
+});
+
+export const { resetReport } = messagingSlice.actions;
+export default messagingSlice.reducer;

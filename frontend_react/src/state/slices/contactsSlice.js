@@ -1,58 +1,101 @@
-import httpClient from '../../api/httpClient';
+import { createAsyncThunk, createSlice } from '@reduxjs/toolkit';
+import { contactsApi } from '../../api/contactsApi';
+import { showToast } from './uiSlice';
 
-const prefix = 'contacts';
-
-const SET_LOADING = `${prefix}/SET_LOADING`;
-const SET_ITEMS = `${prefix}/SET_ITEMS`;
-const SET_ERROR = `${prefix}/SET_ERROR`;
-
-const initialState = {
-  items: [],
-  loading: false,
-  error: null,
-};
-
-function reducer(state = initialState, action) {
-  switch (action.type) {
-    case SET_LOADING:
-      return { ...state, loading: action.payload, error: action.payload === true ? null : state.error };
-    case SET_ITEMS:
-      return { ...state, items: Array.isArray(action.payload) ? action.payload : [], loading: false, error: null };
-    case SET_ERROR:
-      return { ...state, error: action.payload, loading: false };
-    default:
-      return state;
+// PUBLIC_INTERFACE
+export const fetchContactLists = createAsyncThunk('contacts/fetchContactLists', async (_, { rejectWithValue }) => {
+  try {
+    const res = await contactsApi.getContactLists();
+    return res || [];
+  } catch (err) {
+    return rejectWithValue(err?.message || 'Failed to fetch contact lists');
   }
-}
+});
 
 // PUBLIC_INTERFACE
-export function fetchContacts() {
-  /**
-   * Async thunk to load contacts.
-   * Placeholder endpoint: GET /contacts
-   */
-  return async (dispatch) => {
-    dispatch({ type: SET_LOADING, payload: true });
-    try {
-      const res = await httpClient.get('/contacts');
-      dispatch({ type: SET_ITEMS, payload: res?.data?.data || res?.data || [] });
-    } catch (e) {
-      dispatch({ type: SET_ERROR, payload: e?.message || 'Failed to load contacts' });
-    } finally {
-      dispatch({ type: SET_LOADING, payload: false });
-    }
-  };
-}
+export const createContactList = createAsyncThunk('contacts/createContactList', async (payload, { rejectWithValue, dispatch }) => {
+  try {
+    const res = await contactsApi.createContactList(payload);
+    dispatch(showToast({ type: 'success', message: 'Contact list created' }));
+    return res;
+  } catch (err) {
+    const msg = err?.message || 'Failed to create contact list';
+    dispatch(showToast({ type: 'error', message: msg }));
+    return rejectWithValue(msg);
+  }
+});
 
 // PUBLIC_INTERFACE
-export function setContacts(items) {
-  /** Synchronous setter for contacts list. */
-  return { type: SET_ITEMS, payload: items };
-}
+export const uploadContacts = createAsyncThunk('contacts/uploadContacts', async ({ listId, contacts }, { rejectWithValue, dispatch }) => {
+  try {
+    const res = await contactsApi.uploadContacts(listId, contacts);
+    dispatch(showToast({ type: 'success', message: `Uploaded ${res?.added || 0} contacts` }));
+    return { listId, res };
+  } catch (err) {
+    const msg = err?.message || 'Failed to upload contacts';
+    dispatch(showToast({ type: 'error', message: msg }));
+    return rejectWithValue(msg);
+  }
+});
 
-export default {
-  initialState,
-  reducer,
-  actions: { fetchContacts, setContacts },
-  types: { SET_LOADING, SET_ITEMS, SET_ERROR },
-};
+const contactsSlice = createSlice({
+  name: 'contacts',
+  initialState: {
+    lists: [],
+    loading: { fetch: false, create: false, upload: false },
+    error: { fetch: null, create: null, upload: null },
+  },
+  reducers: {
+    // PUBLIC_INTERFACE
+    setContacts(state, action) {
+      /** Replace contact lists synchronously. */
+      state.lists = Array.isArray(action.payload) ? action.payload : [];
+    },
+  },
+  extraReducers: (builder) => {
+    builder
+      // fetch lists
+      .addCase(fetchContactLists.pending, (state) => {
+        state.loading.fetch = true;
+        state.error.fetch = null;
+      })
+      .addCase(fetchContactLists.fulfilled, (state, action) => {
+        state.loading.fetch = false;
+        state.lists = action.payload || [];
+      })
+      .addCase(fetchContactLists.rejected, (state, action) => {
+        state.loading.fetch = false;
+        state.error.fetch = action.payload || 'Failed to fetch contact lists';
+      })
+      // create list
+      .addCase(createContactList.pending, (state) => {
+        state.loading.create = true;
+        state.error.create = null;
+      })
+      .addCase(createContactList.fulfilled, (state, action) => {
+        state.loading.create = false;
+        if (action.payload) state.lists.unshift(action.payload);
+      })
+      .addCase(createContactList.rejected, (state, action) => {
+        state.loading.create = false;
+        state.error.create = action.payload || 'Failed to create contact list';
+      })
+      // upload contacts
+      .addCase(uploadContacts.pending, (state) => {
+        state.loading.upload = true;
+        state.error.upload = null;
+      })
+      .addCase(uploadContacts.fulfilled, (state, action) => {
+        state.loading.upload = false;
+        const idx = state.lists.findIndex((l) => l.id === action.payload?.listId);
+        if (idx !== -1) state.lists[idx].count = (state.lists[idx].count || 0) + (action.payload?.res?.added || 0);
+      })
+      .addCase(uploadContacts.rejected, (state, action) => {
+        state.loading.upload = false;
+        state.error.upload = action.payload || 'Failed to upload contacts';
+      });
+  },
+});
+
+export const { setContacts } = contactsSlice.actions;
+export default contactsSlice.reducer;

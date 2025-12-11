@@ -1,48 +1,46 @@
-const prefix = 'ui';
+import { createSlice, nanoid } from '@reduxjs/toolkit';
 
-const SET_THEME = `${prefix}/SET_THEME`;
-const SET_TOAST = `${prefix}/SET_TOAST`;
-const CLEAR_TOAST = `${prefix}/CLEAR_TOAST`;
-
-const initialState = {
-  theme: 'light',
-  toast: null, // { message, type }
-};
-
-function reducer(state = initialState, action) {
-  switch (action.type) {
-    case SET_THEME:
-      return { ...state, theme: action.payload || 'light' };
-    case SET_TOAST:
-      return { ...state, toast: action.payload || null };
-    case CLEAR_TOAST:
-      return { ...state, toast: null };
-    default:
-      return state;
-  }
-}
+/**
+ * PUBLIC_INTERFACE
+ * uiSlice handles global UI state including toast notifications.
+ * Exposes actions: showToast, hideToast, clearToasts; and selector: selectToasts.
+ */
+const uiSlice = createSlice({
+  name: 'ui',
+  initialState: {
+    toasts: [], // {id, type: 'success'|'error'|'info', message}
+  },
+  reducers: {
+    // PUBLIC_INTERFACE
+    showToast: {
+      /**
+       * Show a toast notification.
+       * payload: { type: 'success'|'error'|'info', message: string, id?: string }
+       */
+      reducer(state, action) {
+        state.toasts.push(action.payload);
+      },
+      prepare(payload) {
+        return { payload: { id: payload?.id || nanoid(), type: payload?.type || 'info', message: payload?.message || '' } };
+      },
+    },
+    // PUBLIC_INTERFACE
+    hideToast(state, action) {
+      /** Hide a toast by id. payload: string (id) */
+      state.toasts = state.toasts.filter((t) => t.id !== action.payload);
+    },
+    // PUBLIC_INTERFACE
+    clearToasts(state) {
+      /** Clear all toasts. */
+      state.toasts = [];
+    },
+  },
+});
 
 // PUBLIC_INTERFACE
-export function setTheme(theme) {
-  /** Sets UI theme (light|dark). */
-  return { type: SET_THEME, payload: theme };
-}
+export const { showToast, hideToast, clearToasts } = uiSlice.actions;
 
 // PUBLIC_INTERFACE
-export function showToast(message, type = 'info') {
-  /** Shows a global toast payload. */
-  return { type: SET_TOAST, payload: { message, type } };
-}
+export const selectToasts = (state) => state.ui.toasts;
 
-// PUBLIC_INTERFACE
-export function clearToast() {
-  /** Clears current toast. */
-  return { type: CLEAR_TOAST };
-}
-
-export default {
-  initialState,
-  reducer,
-  actions: { setTheme, showToast, clearToast },
-  types: { SET_THEME, SET_TOAST, CLEAR_TOAST },
-};
+export default uiSlice.reducer;

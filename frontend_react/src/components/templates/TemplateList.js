@@ -1,71 +1,35 @@
 import React from 'react';
-import PropTypes from 'prop-types';
-import Card from '../common/Card';
-import Table from '../common/Table';
+import { useDispatch, useSelector } from 'react-redux';
+import { deleteTemplate } from '../../state/slices/templatesSlice';
 import Button from '../common/Button';
-import Badge from '../common/Badge';
+import Card from '../common/Card';
 
-/**
- * TemplateList
- * Displays a table of templates with actions: edit, submit, delete.
- */
-// PUBLIC_INTERFACE
-export default function TemplateList({ items = [], loading = false, onCreate, onEdit, onDelete, onSubmit }) {
-  const columns = [
-    { key: 'name', header: 'Name' },
-    { key: 'language', header: 'Lang', align: 'center' },
-    { key: 'category', header: 'Category' },
-    {
-      key: (row) => <StatusCell row={row} />,
-      header: 'Status',
-      align: 'center',
-    },
-    {
-      key: (row) => (
-        <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end' }}>
-          <Button size="sm" variant="outline" onClick={() => onEdit?.(row)}>Edit</Button>
-          <Button size="sm" variant="secondary" onClick={() => onSubmit?.(row)} disabled={row.status === 'submitted' || row.status === 'approved'}>
-            Submit
-          </Button>
-          <Button size="sm" variant="danger" onClick={() => onDelete?.(row)}>Delete</Button>
-        </div>
-      ),
-      header: 'Actions',
-      align: 'right',
-    },
-  ];
+const TemplateList = ({ templates = [], onEdit }) => {
+  const dispatch = useDispatch();
+  const deleting = useSelector((s) => s.templates.loading.delete);
+
+  const handleDelete = async (id) => {
+    await dispatch(deleteTemplate(id));
+  };
 
   return (
-    <Card
-      title="Templates"
-      subtitle="Create and manage your WhatsApp message templates"
-      actions={<Button variant="primary" onClick={onCreate}>New Template</Button>}
-    >
-      {loading ? <div style={{ padding: 8 }}><span className="spinner__label">Loading…</span></div> : null}
-      <Table
-        columns={columns}
-        data={items}
-        emptyMessage="No templates yet. Click New Template to create your first."
-      />
-    </Card>
+    <div className="space-y-3">
+      {templates.map((t) => (
+        <Card key={t.id} className="flex items-center justify-between">
+          <div>
+            <div className="font-medium">{t.name}</div>
+            <div className="text-sm text-gray-500">{t.content?.slice(0, 120)}</div>
+          </div>
+          <div className="flex gap-2">
+            <Button onClick={() => onEdit(t)} variant="secondary">Edit</Button>
+            <Button onClick={() => handleDelete(t.id)} variant="danger" disabled={deleting}>
+              {deleting ? 'Deleting...' : 'Delete'}
+            </Button>
+          </div>
+        </Card>
+      ))}
+    </div>
   );
-}
-
-function StatusCell({ row }) {
-  const status = row?.status || 'draft';
-  const tone = status === 'approved' ? 'success' : status === 'rejected' ? 'danger' : status === 'submitted' ? 'primary' : 'neutral';
-  return <Badge tone={tone}>{status}</Badge>;
-}
-
-StatusCell.propTypes = {
-  row: PropTypes.object,
 };
 
-TemplateList.propTypes = {
-  items: PropTypes.arrayOf(PropTypes.object),
-  loading: PropTypes.bool,
-  onCreate: PropTypes.func,
-  onEdit: PropTypes.func,
-  onDelete: PropTypes.func,
-  onSubmit: PropTypes.func,
-};
+export default TemplateList;
